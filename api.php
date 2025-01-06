@@ -66,50 +66,50 @@ switch ($action) {
 
 
 
-        case 'upload_folder':
-            if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['user_id'], $_POST['folder_name'])) {
-                $userId = $_POST['user_id'];
-                $folderName = $_POST['folder_name'];
-                $folderPath = "uploads/$userId/$folderName"; // Define folder path
+        // case 'upload_folder':
+        //     if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['user_id'], $_POST['folder_name'])) {
+        //         $userId = $_POST['user_id'];
+        //         $folderName = $_POST['folder_name'];
+        //         $folderPath = "uploads/$userId/$folderName"; // Define folder path
         
-                // Step 1: Insert the folder into `folder_uploads` table with path
-                $stmt = $conn->prepare("INSERT INTO folder_uploads (user_id, folder_name, folder_path) VALUES (?, ?, ?)");
-                $stmt->bind_param("iss", $userId, $folderName, $folderPath);
-                if ($stmt->execute()) {
-                    $folderId = $stmt->insert_id;
+        //         // Step 1: Insert the folder into `folder_uploads` table with path
+        //         $stmt = $conn->prepare("INSERT INTO folder_uploads (user_id, folder_name, folder_path) VALUES (?, ?, ?)");
+        //         $stmt->bind_param("iss", $userId, $folderName, $folderPath);
+        //         if ($stmt->execute()) {
+        //             $folderId = $stmt->insert_id;
         
-                    // Step 2: Prepare to store files in the `files_upload` table
-                    $fileStmt = $conn->prepare("INSERT INTO upload_files (folder_id, user_id, file_name, file_path) VALUES (?, ?, ?, ?)");
-                    foreach ($_FILES['files']['name'] as $index => $name) {
-                        $tempPath = $_FILES['files']['tmp_name'][$index];
-                        $targetPath = "$folderPath/" . basename($name);
+        //             // Step 2: Prepare to store files in the `files_upload` table
+        //             $fileStmt = $conn->prepare("INSERT INTO upload_files (folder_id, user_id, file_name, file_path) VALUES (?, ?, ?, ?)");
+        //             foreach ($_FILES['files']['name'] as $index => $name) {
+        //                 $tempPath = $_FILES['files']['tmp_name'][$index];
+        //                 $targetPath = "$folderPath/" . basename($name);
         
-                        // Create the directory if it doesn't exist
-                        if (!file_exists(dirname($targetPath))) {
-                            mkdir(dirname($targetPath), 0777, true);
-                        }
+        //                 // Create the directory if it doesn't exist
+        //                 if (!file_exists(dirname($targetPath))) {
+        //                     mkdir(dirname($targetPath), 0777, true);
+        //                 }
         
-                        // Move the file to the target path
-                        if (move_uploaded_file($tempPath, $targetPath)) {
-                            $fileStmt->bind_param("iiss", $folderId, $userId, $name, $targetPath);
-                            $fileStmt->execute();
-                        }
-                    }
+        //                 // Move the file to the target path
+        //                 if (move_uploaded_file($tempPath, $targetPath)) {
+        //                     $fileStmt->bind_param("iiss", $folderId, $userId, $name, $targetPath);
+        //                     $fileStmt->execute();
+        //                 }
+        //             }
         
-                    echo json_encode([
-                        "status" => "success",
-                        "message" => "Folder and files uploaded successfully",
-                        "folder_id" => $folderId,
-                        "folder_name" => $folderName,
-                        "folder_path" => $folderPath
-                    ]);
-                } else {
-                    echo json_encode(["status" => "error", "message" => "Failed to create folder"]);
-                }
-            } else {
-                echo json_encode(["status" => "error", "message" => "Invalid request"]);
-            }
-            break;
+        //             echo json_encode([
+        //                 "status" => "success",
+        //                 "message" => "Folder and files uploaded successfully",
+        //                 "folder_id" => $folderId,
+        //                 "folder_name" => $folderName,
+        //                 "folder_path" => $folderPath
+        //             ]);
+        //         } else {
+        //             echo json_encode(["status" => "error", "message" => "Failed to create folder"]);
+        //         }
+        //     } else {
+        //         echo json_encode(["status" => "error", "message" => "Invalid request"]);
+        //     }
+        //     break;
         
 
 
@@ -373,6 +373,103 @@ switch ($action) {
             }
             break;
         
+//files functionality
+
+
+case 'get_files_sep':
+    // Fetch folders based on user ID
+    if ($_SERVER['REQUEST_METHOD'] == 'GET' && isset($_GET['user_id'])) {
+        $userId = $_GET['user_id'];
+        $stmt = $conn->prepare("SELECT id, file_name, file_path FROM upload_file_sep WHERE user_id = ?");
+        $stmt->bind_param("i", $userId);
+        $stmt->execute();
+        $result = $stmt->get_result();
+
+        if ($result->num_rows > 0) {
+            $files = [];
+            while ($row = $result->fetch_assoc()) {
+                $files[] = $row;
+            }
+            echo json_encode(["status" => "success", "files" => $files]);
+        } else {
+            echo json_encode(["status" => "error", "message" => "No folders found"]);
+        }
+
+        $stmt->close();
+    }
+    break;
+
+    case 'upload_file_sep':
+        if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_FILES['file']) && isset($_POST['user_id'])) {
+            $fileName = $_FILES['file']['name'];
+            $fileTmpName = $_FILES['file']['tmp_name'];
+            $userId = $_POST['user_id'];
+            $filePath = "uploads/$userId/$fileName";
+
+            if (move_uploaded_file($fileTmpName, $filePath)) {
+                // Save file path in the database
+                $stmt = $conn->prepare("INSERT INTO upload_file_sep (user_id, file_name, file_path) VALUES (?, ?, ?)");
+                $stmt->bind_param("iss", $userId, $fileName, $filePath);
+                
+                if ($stmt->execute()) {
+                    $fileId = $conn->insert_id;
+                    echo json_encode(["status" => "success", "message" => "File uploaded successfully", "file_path" => $filePath,"fileId" => $fileId]);
+                } else {
+                    echo json_encode(["status" => "error", "message" => "Failed to save file path in the database"]);
+                }
+                
+                $stmt->close();
+            } else {
+                echo json_encode(["status" => "error", "message" => "Failed to upload file"]);
+            }
+        }
+        break;
+        
+
+case 'delete_file_sep':
+    // Delete folder API
+    if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['file_id']) && isset($_GET['user_id'])) {
+        $fileId = $_GET['file_id'];
+        $userId = $_GET['user_id'];
+
+        // Fetch the file path from the database
+        $stmt = $conn->prepare("SELECT file_path FROM upload_file_sep WHERE file_id = ? AND user_id = ?");
+        $stmt->bind_param("ii", $fileId, $userId);
+        $stmt->execute();
+        $result = $stmt->get_result();
+
+        if ($result->num_rows > 0) {
+            $fileData = $result->fetch_assoc();
+            $filePath = $fileData['file_path'];
+            // Delete the file from the server
+            if (file_exists($filePath)) {
+                unlink($filePath); // Delete file from server
+            }
+
+            // Delete the file record from the database
+            $deleteQuery = "DELETE FROM upload_file_sep WHERE file_id = ? AND user_id = ?";
+            $deleteStmt = $conn->prepare($deleteQuery);
+            $deleteStmt->bind_param("ii", $fileId, $userId);
+            $deleteStmt->execute();
+
+            if ($deleteStmt->affected_rows > 0) {
+                echo json_encode(['status' => 'success', 'message' => 'File deleted successfully']);
+            } else {
+                echo json_encode(['status' => 'error', 'message' => 'Failed to delete file record from the database']);
+            }
+        } else {
+            echo json_encode(['status' => 'error', 'message' => 'File not found']);
+        }
+    } else {
+        echo json_encode(['status' => 'error', 'message' => 'Invalid request']);
+    }
+    break;
+
+
+
+
+
+
 
     default:
         echo json_encode(["status" => "error", "message" => "Invalid action"]);
